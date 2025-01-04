@@ -1,0 +1,143 @@
+#!/usr/bin/python3
+
+import os
+import boto3
+from pick import pick
+
+
+# ECSクラスタの一覧取得
+def getClusterList(ecs):
+    ret = ecs.list_clusters()
+    clusterArns = ret["clusterArns"]
+    if len(clusterArns) == 0:
+        print("No clusters")
+        return []
+    ret = ecs.describe_clusters(clusters=clusterArns)
+    clusters = ret["clusters"]
+
+    clusterList = []
+    for cluster in clusters:
+        clusterName = cluster["clusterName"]
+        status = cluster["status"]
+        runningTasksCount = cluster["runningTasksCount"]
+        pendingTasksCount = cluster["pendingTasksCount"]
+        activeServicesCount = cluster["activeServicesCount"]
+        clusterList.append(
+            {
+                "clusterName": clusterName,
+                "status": status,
+                "runningTasksCount": runningTasksCount,
+                "pendingTasksCount": pendingTasksCount,
+                "activeServicesCount": activeServicesCount,
+            }
+        )
+    return clusterList
+
+
+# サービスの有効化確認
+def checkEnableExecuteCommand(ecs, clusterName):
+    # ECSサービス一覧を取得
+    serviceList = ecs.list_services(
+        cluster=clusterName,
+    )
+    describeService = ecs.describe_services(
+        cluster=clusterName, services=serviceList["serviceArns"]
+    )
+    enableExecuteCommand = describeService["services"][0]["enableExecuteCommand"]
+    return enableExecuteCommand
+
+
+# タスク情報取得
+def getTaskList(ecs, clusterName):
+    ret = ecs.list_tasks(
+        cluster=clusterName,
+        desiredStatus="RUNNING",
+        launchType="FARGATE",
+    )
+    taskArns = ret["taskArns"]
+    if len(taskArns) == 0:
+        print("No running tasks")
+        return []
+    ret = ecs.describe_tasks(
+        cluster=clusterName,
+        tasks=taskArns,
+    )
+    tasks = ret["tasks"]
+
+    taskList = []
+    for i, task in enumerate(tasks):
+        taskId = taskArns[i].split("/")[2]
+        desiredStatus = task["desiredStatus"]
+        startedAt = task["startedAt"]
+        containers = task["containers"]
+        ipaddress = containers[0]["networkInterfaces"][0]["privateIpv4Address"]
+        taskList.append(
+            {
+                "status": desiredStatus,
+                "startedAt": startedAt,
+                "ipaddress": ipaddress,
+                "taskId": taskId,
+            }
+        )
+    return taskList
+
+
+# タスクIDの選択
+def selectTaskId(taskList):
+    list = []
+    for task in taskList:
+        startAt = task["startedAt"].strftime("%Y-%m-%d %H:%M:%S")
+        list.append(
+            f"ip:{task['ipaddress']}\t{task['status']} start:{startAt} id:{task['taskId']}"
+        )
+    _, index = pick(list, "Please choose an task:")
+    return taskList[index]["taskId"]
+
+
+# クラスタの選択
+def selectClusterName(clusterList):
+
+    list = []
+    for cluster in clusterList:
+        list.append(f"{cluster['clusterName']} running:{cluster['runningTasksCount']}")
+
+    _, index = pick(list, "Please choose an cluster:")
+    return clusterList[index]["clusterName"]
+
+
+def main():
+
+    ecs = boto3.client("ecs")
+
+    # ECSクラスタの一覧取得
+    clusterList = getClusterList(ecs)
+
+    # クラスタの選択
+    clusterName = selectClusterName(clusterList)
+
+    # サービスの有効化確認 (enableExecuteCommand=Trueの場合はECS Execが有効)
+    if checkEnableExecuteCommand(ecs, clusterName) == False:
+        print("ECS Service is not enabled for ECS Exec")
+        return
+
+    # タスク名一覧取得
+    taskList = getTaskList(ecs, clusterName)
+    if taskList == []:
+        return
+
+    # タスクIDの選択
+    taskId = selectTaskId(taskList)
+
+    # コンテナ名取得
+    getContainerName = ecs.describe_tasks(
+        cluster=clusterName,
+        tasks=[taskId],
+    )
+    # コンテナ名取得
+    containerName = getContainerName["tasks"][0]["containers"][0]["name"]
+    cmd = f'aws ecs execute-command --region ap-northeast-1 --cluster {clusterName} --task {taskId} --container {containerName} --interactive --command "/bin/sh"'
+    print(cmd)
+    os.system(cmd)
+
+
+main()
