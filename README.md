@@ -48,6 +48,7 @@ True
 }  
 ```
 
+
 #### ログインする側に権限が必要
 
 ```json
@@ -65,6 +66,19 @@ True
       }  
   ]  
 } 
+```
+
+#### SSMへのエンドポイントが必要
+
+```js
+myVpc.addInterfaceEndpoint(`${id}-SSMMessagesEndpoinForPrivatet`, {
+  service: ec2.InterfaceVpcEndpointAwsService.SSM_MESSAGES,
+  subnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+});
+myVpc.addInterfaceEndpoint(`${id}-SSMEndpointForPrivatet`, {
+  service: ec2.InterfaceVpcEndpointAwsService.SSM,
+  subnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+});
 ```
 
 ## 2 処理内容
