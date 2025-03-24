@@ -52,7 +52,7 @@ def getTaskList(ecs, clusterName):
     ret = ecs.list_tasks(
         cluster=clusterName,
         desiredStatus="RUNNING",
-        launchType="FARGATE",
+        # launchType="FARGATE",
     )
     taskArns = ret["taskArns"]
     if len(taskArns) == 0:
@@ -70,7 +70,12 @@ def getTaskList(ecs, clusterName):
         desiredStatus = task["desiredStatus"]
         startedAt = task["startedAt"]
         containers = task["containers"]
-        ipaddress = containers[0]["networkInterfaces"][0]["privateIpv4Address"]
+
+        if containers[0]["networkInterfaces"]:
+            ipaddress = containers[0]["networkInterfaces"][0]["privateIpv4Address"]
+        else:
+            ipaddress = "XXXX"
+
         taskList.append(
             {
                 "status": desiredStatus,
@@ -135,6 +140,8 @@ def main():
     )
     # コンテナ名取得
     containerName = getContainerName["tasks"][0]["containers"][0]["name"]
+    # print(f"enableExecuteCommand: {enableExecuteCommand}")
+    # print(f"taskDefinition: {taskDefinition}")
     cmd = f'aws ecs execute-command --region ap-northeast-1 --cluster {clusterName} --task {taskId} --container {containerName} --interactive --command "/bin/sh"'
     print(cmd)
     os.system(cmd)
