@@ -24,6 +24,7 @@ True
 
 
 * Falseの場合は、下記で有効化する
+* 有効化した後に起動したタスクから有効になる（既存のタスクは、再起動が必要）
 ```
 % aws ecs update-service --cluster <クラスター名> --service <サービス名> --enable-execute-command
 ```
